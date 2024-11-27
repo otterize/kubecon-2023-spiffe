@@ -112,7 +112,15 @@ func credentials(opts Options) (map[string]string, error) {
 	rolesAnywhereClient.Handlers.Build.RemoveByName("core.SDKVersionUserAgentHandler")
 	rolesAnywhereClient.Handlers.Build.PushBackNamed(request.NamedHandler{Name: "v4x509.CredHelperUserAgentHandler", Fn: request.MakeAddToUserAgentHandler("aws.spiffe.csi.cert-manager.io", version.String, runtime.Version(), runtime.GOOS, runtime.GOARCH)})
 	rolesAnywhereClient.Handlers.Sign.Clear()
-	rolesAnywhereClient.Handlers.Sign.PushBackNamed(request.NamedHandler{Name: "v4x509.SignRequestHandler", Fn: awssh.CreateSignFunction(*key, *opts.CertificateLeaf, opts.CertificateIntermediates)})
+
+	certificateIntermediates := opts.CertificateIntermediates
+	if len(certificateIntermediates) == 0 {
+		// awssh.CreateSignFunction compares the intermediates slice to nil to check if the 'X-Amz-X509-Chain' header should be added to the request,
+		// and starting at some point, the AWS API started rejecting requests with an existing-yet-empty 'X-Amz-X509-Chain' header.
+		// To avoid this, we set the intermediates slice to nil if it's empty.
+		certificateIntermediates = nil
+	}
+	rolesAnywhereClient.Handlers.Sign.PushBackNamed(request.NamedHandler{Name: "v4x509.SignRequestHandler", Fn: awssh.CreateSignFunction(*key, *opts.CertificateLeaf, certificateIntermediates)})
 
 	createSessionRequest := rolesanywhere.CreateSessionInput{
 		Cert:               &opts.CertificateChainPEM,
